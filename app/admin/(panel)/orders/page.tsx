@@ -94,12 +94,12 @@ export default function AdminOrdersPage() {
   const [scopeUserId, setScopeUserId] = useState(initialScope);
   const [segments, setSegments] = useState<OrderSegment[]>(DEFAULT_SEGMENTS);
   const [rows, setRows] = useState<OrderRow[]>([]);
-  const [source, setSource] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [showOptionType, setShowOptionType] = useState(true);
   const [showSide, setShowSide] = useState(true);
+  const [globalOrderIds, setGlobalOrderIds] = useState<string[]>([]);
 
   const totalPnl = useMemo(
     () => rows.reduce((a, o) => a + computeOrderPnl(o), 0),
@@ -125,10 +125,21 @@ export default function AdminOrdersPage() {
           orders?: OrderRow[];
           showOptionType?: boolean;
           showSide?: boolean;
+          deletedOrderIds?: string[];
         };
         source?: string;
+        globalOrderIds?: string[];
       }>(`/api/admin/orders${q}`);
       const cfg = data.config || {};
+      const incomingGlobalIds = Array.isArray(data.globalOrderIds) ? data.globalOrderIds : [];
+      setGlobalOrderIds(incomingGlobalIds);
+      console.log("[admin/orders page] loaded", {
+        scopeUserId,
+        source: data.source,
+        rowCount: Array.isArray(cfg.orders) ? cfg.orders.length : 0,
+        globalIdCount: incomingGlobalIds.length,
+        deletedOrderIds: cfg.deletedOrderIds ?? [],
+      });
       setShowOptionType(cfg.showOptionType !== false);
       setShowSide(cfg.showSide !== false);
       const segs = cfg.segments;
@@ -154,7 +165,6 @@ export default function AdminOrdersPage() {
             )
           : [],
       );
-      setSource(String(data.source || ""));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to load");
     }
@@ -175,6 +185,17 @@ export default function AdminOrdersPage() {
       dayPnl: rows.reduce((a, o) => a + computeOrderPnl(o), 0),
       totalPnl: rows.reduce((a, o) => a + computeOrderPnl(o), 0),
     };
+    // In scoped mode, any global row id that's no longer present is a deletion.
+    // Without this, the merge in the backend would re-introduce the global row on next load.
+    const currentIds = new Set(rows.map((r) => r.id));
+    const deletedOrderIds = scopeUserId.trim()
+      ? globalOrderIds.filter((id) => !currentIds.has(id))
+      : [];
+    console.log("[admin/orders page] saving", {
+      scopeUserId: scopeUserId || null,
+      rowCount: rows.length,
+      deletedOrderIds,
+    });
     try {
       await adminJson("/api/admin/orders", {
         method: "POST",
@@ -186,6 +207,7 @@ export default function AdminOrdersPage() {
             orders: rows,
             showOptionType,
             showSide,
+            deletedOrderIds,
           },
         }),
       });
@@ -223,11 +245,8 @@ export default function AdminOrdersPage() {
     <div className="mx-auto max-w-[100rem]">
       <h2 className="text-lg font-semibold text-slate-900">Orders &amp; positions</h2>
       <p className="mt-1 text-sm text-slate-600">
-        Set the <strong>scope user id</strong> (or quick-pick) and click <strong>Load</strong>, then add rows and <strong>Save</strong>.
-        Per-user rows <strong>merge</strong> with global: same trade <code className="rounded bg-slate-100 px-1">id</code> is
-        replaced; new ids are added. Leave scope empty to edit <strong>global</strong> defaults for everyone.
+        Select a user, add or remove order rows, then click <strong>Save</strong>.
       </p>
-      {source ? <p className="mt-2 text-xs text-slate-500">Source: {source}</p> : null}
       {msg ? (
         <p className="mt-4 rounded-lg bg-emerald-50 px-4 py-2 text-sm text-emerald-900">{msg}</p>
       ) : null}
@@ -242,26 +261,6 @@ export default function AdminOrdersPage() {
           onLoad={() => void loadConfig()}
           users={users}
         />
-      </div>
-
-      <div
-        className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
-          scopeUserId.trim()
-            ? "border-sky-200 bg-sky-50 text-sky-950"
-            : "border-slate-200 bg-slate-50 text-slate-800"
-        }`}
-      >
-        {scopeUserId.trim() ? (
-          <>
-            <strong>Editing this user only</strong> — paste/save the MongoDB <code className="rounded bg-white/80 px-1">_id</code>{" "}
-            above. The app merges these rows with <strong>global</strong> trades (per-user replaces same{" "}
-            <code className="rounded bg-white/80 px-1">id</code>).
-          </>
-        ) : (
-          <>
-            <strong>Global scope</strong> — these trades show for every account unless a user has their own scoped list.
-          </>
-        )}
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
