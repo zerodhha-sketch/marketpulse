@@ -178,6 +178,10 @@ export default function AdminOrdersPage() {
   }, [loadConfig]);
 
   async function save() {
+    if (!scopeUserId.trim()) {
+      setErr("Select a user before saving.");
+      return;
+    }
     setSaving(true);
     setMsg(null);
     setErr(null);
@@ -274,7 +278,7 @@ export default function AdminOrdersPage() {
         <button
           type="button"
           onClick={() => void save()}
-          disabled={saving}
+          disabled={saving || !scopeUserId.trim()}
           className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save"}
